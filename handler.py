@@ -19,15 +19,17 @@ def open_encoding(filename):
 	file = open(filename, "rb")
 	data = pickle.load(file)
 	file.close()
-	print(data)
+	# print(data)
 	return data
 
 def download_and_save_video(event):
-	if event and event['Records'] and len(event['Records']) > 0 and event['Records'][0]['s3'] and event['Records'][0]['s3']['object'] and event['Records'][0]['s3']['object']['key']:
+	if event and 'Records' in event and len(event['Records']) > 0 and 's3' in event['Records'][0] and 'object' in event['Records'][0]['s3'] and 'key' in event['Records'][0]['s3']['object']:
 		video_name = event['Records'][0]['s3']['object']['key']
 		bucket_client.download_file(input_bucket, video_name, '/tmp/'+video_name)
 		return video_name
-	return None
+	else:
+		print('Required Json not present.')
+		return None
 
 
 def query_data_save_to_csv(video_name, object_name):
@@ -39,7 +41,7 @@ def query_data_save_to_csv(video_name, object_name):
 
 	row_data = ','.join([db_data['name'], db_data['major'], db_data['year']]) + '\n'
 	output_file_path = '/tmp/'
-	output_file_name = 'output-file-' + video_name.replace('.mp4', '') + '.csv' 
+	output_file_name = 'output-file-' + video_name.lower().replace('.mp4', '') + '.csv' 
 	output_file_qualified_name = output_file_path + output_file_name
 	
 	output_file = open(output_file_qualified_name, 'a')
@@ -50,34 +52,38 @@ def query_data_save_to_csv(video_name, object_name):
 
 
 def face_recognition_handler(event, context):
-	print('Hello')
+	print('Started Face Recognition...')
 	# print("Received event: " + json.dumps(event, indent=2))
 	video_name = download_and_save_video(event);
-	print(video_name)
-	video_file_path = '/tmp/' + video_name
-	frames_path = '/tmp/'
-	os.system("ffmpeg -i " + str(video_file_path) + " -r 1 " + str(frames_path) + "image-%3d.jpeg")
-	images = os.listdir(frames_path)
-	print(images)
-	known_image_data = open_encoding('/home/app/encoding')
-	# for image in images:
-	unknown_image = face_recognition.load_image_file(frames_path+'image-001.jpeg')
-	unknown_encoding = face_recognition.face_encodings(unknown_image)[0]
-	# print(unknown_encoding)
-	results = face_recognition.compare_faces(known_image_data['encoding'], unknown_encoding)
-	# print(results)
+	if video_name is not None:
+		print(video_name)
+		video_file_path = '/tmp/' + video_name
+		frames_path = '/tmp/'
+		os.system("ffmpeg -i " + str(video_file_path) + " -r 1 " + str(frames_path) + "image-%3d.jpeg")
+		images = os.listdir(frames_path)
+		print(images)
+		known_image_data = open_encoding('/home/app/encoding')
+		# for image in images:
+		unknown_image = face_recognition.load_image_file(frames_path+'image-001.jpeg')
+		unknown_encoding = face_recognition.face_encodings(unknown_image)[0]
+		# print(unknown_encoding)
+		results = face_recognition.compare_faces(known_image_data['encoding'], unknown_encoding)
+		# print(results)
 
-	true_index = 0
-	for index in range(0, len(results)):
-		if results[index]:
-			true_index = index
-			print(true_index)
-			break
+		true_index = -1
+		for index in range(0, len(results)):
+			if results[index]:
+				true_index = index
+				print(true_index)
+				break
 
-	print(known_image_data['name'][true_index])
-	object_name = known_image_data['name'][true_index]
-	
-	query_data_save_to_csv(video_name, object_name)
+		if true_index >=0:
+			print(known_image_data['name'][true_index])
+			object_name = known_image_data['name'][true_index]
+			
+			query_data_save_to_csv(video_name, object_name)
+		else:
+			print('Object Not recognizable...')
 
 	
 # face_recognition_handler()
